@@ -13,7 +13,7 @@ variables:
   awsRegion: 'us-east-1' # AWS region for deployment
   templatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml' # Path to S3 CloudFormation template
   stackName: 'MyS3Stack' # Name of the CloudFormation stack
-  bucketName: 'my-unique-bucket-2025' # Unique bucket name (must be globally unique and lowercase)
+  bucketName: 'bucket for lambda code' # Unique bucket name (must be globally unique and lowercase)
 
 jobs:
   - job: ValidateAndDeploy
