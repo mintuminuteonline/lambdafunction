@@ -1,0 +1,42 @@
+# Azure DevOps pipeline to validate and deploy an S3 bucket CloudFormation template
+trigger:
+  branches:
+    include:
+      - main # Trigger pipeline on push to main branch
+pr: none # Disable PR triggers
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  awsServiceConnection: 'aws-oidc-federation' # AWS service connection name
+  awsRegion: 'us-east-1' # AWS region for deployment
+  templatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml' # Path to S3 CloudFormation template
+  stackName: 'MyS3Stack' # Name of the CloudFormation stack
+  bucketName: 'my-unique-bucket-2025' # Unique bucket name (must be globally unique and lowercase)
+
+jobs:
+  - job: ValidateAndDeploy
+    displayName: 'Validate and Deploy S3 Bucket'
+    steps:
+      - checkout: self
+        displayName: 'Checkout Code'
+      - task: AWSShellScript@1
+        displayName: 'Validate CloudFormation Template'
+        inputs:
+          awsCredentials: '$(awsServiceConnection)'
+          regionName: '$(awsRegion)'
+          scriptType: 'inline'
+          inlineScript: |
+            aws cloudformation validate-template --template-body file://$(templatePath)
+      - task: AWSShellScript@1
+        displayName: 'Deploy CloudFormation Stack'
+        inputs:
+          awsCredentials: '$(awsServiceConnection)'
+          regionName: '$(awsRegion)'
+          scriptType: 'inline'
+          inlineScript: |
+            aws cloudformation deploy \
+              --template-file $(templatePath) \
+              --stack-name $(stackName) \
+              --parameter-overrides BucketName=$(bucketName)
