@@ -54,6 +54,16 @@ jobs:
               exit 1
             fi
             echo "Uploading files to S3 bucket: $(bucketName)"
-            aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/login.jsp s3://$(bucketName)/login.jsp
-            aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/welcome.jsp s3://$(bucketName)/welcome.jsp
-            aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/web.xml s3://$(bucketName)/WEB-INF/web.xml
+            # List files for debugging
+            echo "Listing files in WebContent:"
+            ls -R $(System.DefaultWorkingDirectory)/WebContent
+            # Upload files with existence check
+            for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/WEB-INF/web.xml; do
+              if [ -f "$(System.DefaultWorkingDirectory)/$file" ]; then
+                echo "Uploading $file"
+                aws s3 cp $(System.DefaultWorkingDirectory)/$file s3://$(bucketName)/$file
+              else
+                echo "Error: File $file not found"
+                exit 1
+              fi
+            done
