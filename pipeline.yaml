@@ -1,4 +1,6 @@
-# Azure DevOps pipeline to validate and deploy an S3 bucket CloudFormation template
+# <xaiArtifact artifact_id="42a9f013-9991-429d-8922-f97a185ebc24" artifact_version_id="f0ee4243-7bf8-47b8-baff-49570f2db454" title="azure-pipelines.yml" contentType="text/yaml">
+# ```yaml
+# Azure DevOps pipeline to validate S3 bucket template and upload Java login page files to S3
 trigger:
   branches:
     include:
@@ -10,17 +12,17 @@ pool:
 
 variables:
   awsServiceConnection: 'aws-oidc-federation' # AWS service connection name
-  awsRegion: 'us-east-1' # AWS region for deployment
-  templatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml' # Path to S3 CloudFormation template
-  stackName: 'MyS3Stack' # Name of the CloudFormation stack
-  bucketName: 'my-unique-bucket-20250705' # Unique bucket name (must be globally unique and lowercase)
+  awsRegion: 'us-east-1' # AWS region
+  templatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml' # Path to S3 template
+  bucketName: 'my-unique-bucket-20250705' # S3 bucket name (must match existing bucket)
+  stackName: 'MyS3Stack' # CloudFormation stack name
 
 jobs:
-  - job: ValidateAndDeploy
-    displayName: 'Validate and Deploy S3 Bucket'
+  - job: ValidateAndUpload
+    displayName: 'Validate S3 Template and Upload Files to S3'
     steps:
       - checkout: self
-        displayName: 'Checkout Code'
+        displayName: 'Checkout GitHub Repository'
       - task: AWSShellScript@1
         displayName: 'Validate CloudFormation Template'
         inputs:
@@ -30,19 +32,19 @@ jobs:
           inlineScript: |
             aws cloudformation validate-template --template-body file://$(templatePath)
       - task: AWSShellScript@1
-        displayName: 'Deploy CloudFormation Stack'
+        displayName: 'Upload Login Page Files to S3'
         inputs:
           awsCredentials: '$(awsServiceConnection)'
           regionName: '$(awsRegion)'
           scriptType: 'inline'
           inlineScript: |
-            # Verify bucketName variable is set and valid
+            # Verify bucketName variable
             if [ -z "$(bucketName)" ]; then
               echo "Error: bucketName variable is empty or unset"
               exit 1
             fi
-            echo "Deploying stack with bucket name: $(bucketName)"
-            aws cloudformation deploy \
-              --template-file $(templatePath) \
-              --stack-name $(stackName) \
-              --parameter-overrides BucketName=$(bucketName)
+            echo "Uploading files to S3 bucket: $(bucketName)"
+            aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/login.jsp s3://$(bucketName)/login.jsp
+            aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/welcome.jsp s3://$(bucketName)/welcome.jsp
+            aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/web.xml s3://$(bucketName)/WEB-INF/web.xml
+# ```
