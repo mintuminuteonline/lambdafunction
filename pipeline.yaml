@@ -1,6 +1,4 @@
-# <xaiArtifact artifact_id="42a9f013-9991-429d-8922-f97a185ebc24" artifact_version_id="f0ee4243-7bf8-47b8-baff-49570f2db454" title="azure-pipelines.yml" contentType="text/yaml">
-# ```yaml
-# Azure DevOps pipeline to validate S3 bucket template and upload Java login page files to S3
+# Azure DevOps pipeline to validate, deploy S3 bucket template, and upload Java login page files to S3
 trigger:
   branches:
     include:
@@ -14,12 +12,12 @@ variables:
   awsServiceConnection: 'aws-oidc-federation' # AWS service connection name
   awsRegion: 'us-east-1' # AWS region
   templatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml' # Path to S3 template
-  bucketName: 'my-unique-bucket-20250705' # S3 bucket name (must match existing bucket)
+  bucketName: 'mintuminuteonline-bucket-20250705' # Unique S3 bucket name
   stackName: 'MyS3Stack' # CloudFormation stack name
 
 jobs:
-  - job: ValidateAndUpload
-    displayName: 'Validate S3 Template and Upload Files to S3'
+  - job: ValidateDeployAndUpload
+    displayName: 'Validate, Deploy S3 Bucket, and Upload Files'
     steps:
       - checkout: self
         displayName: 'Checkout GitHub Repository'
@@ -31,6 +29,18 @@ jobs:
           scriptType: 'inline'
           inlineScript: |
             aws cloudformation validate-template --template-body file://$(templatePath)
+      - task: AWSShellScript@1
+        displayName: 'Deploy CloudFormation Stack'
+        inputs:
+          awsCredentials: '$(awsServiceConnection)'
+          regionName: '$(awsRegion)'
+          scriptType: 'inline'
+          inlineScript: |
+            echo "Deploying stack: $(stackName) with bucket name: $(bucketName)"
+            aws cloudformation deploy \
+              --template-file $(templatePath) \
+              --stack-name $(stackName) \
+              --parameter-overrides BucketName=$(bucketName)
       - task: AWSShellScript@1
         displayName: 'Upload Login Page Files to S3'
         inputs:
@@ -47,4 +57,3 @@ jobs:
             aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/login.jsp s3://$(bucketName)/login.jsp
             aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/welcome.jsp s3://$(bucketName)/welcome.jsp
             aws s3 cp $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/web.xml s3://$(bucketName)/WEB-INF/web.xml
-# ```
