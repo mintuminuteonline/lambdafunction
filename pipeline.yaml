@@ -1,4 +1,4 @@
-# Azure DevOps pipeline to validate and deploy EC2 instance and compile/upload Java web app files to S3
+# Azure DevOps pipeline to validate and deploy S3 bucket, EC2 instance, and compile/upload Java web app files to S3
 trigger:
   branches:
     include:
@@ -11,17 +11,82 @@ pool:
 variables:
   awsServiceConnection: 'aws-oidc-federation'
   awsRegion: 'us-east-1'
+  s3TemplatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml'
   ec2TemplatePath: '$(System.DefaultWorkingDirectory)/ec2-tomcat.yaml'
   bucketName: 'mintuminuteonline-bucket-20250705'
-  stackName: 'LoginAppEC2Stack'
-  keyName: 'cfn-keypair'
+  s3StackName: 'LoginAppS3Stack'
+  ec2StackName: 'LoginAppEC2Stack'
+  keyName: 'my-key-pair'
 
 jobs:
-  - job: ValidateAndDeployEC2
-    displayName: 'Validate and Deploy EC2 Instance'
+  - job: DeployS3Bucket
+    displayName: 'Deploy S3 Bucket'
     steps:
       - checkout: self
         displayName: 'Checkout GitHub Repository'
+      - task: AWSShellScript@1
+        displayName: 'Check and Delete Stuck S3 Stack'
+        inputs:
+          awsCredentials: '$(awsServiceConnection)'
+          regionName: '$(awsRegion)'
+          scriptType: 'inline'
+          inlineScript: |
+            echo "Checking stack status: $(s3StackName)"
+            stack_status=$(aws cloudformation describe-stacks --stack-name $(s3StackName) --region $(awsRegion) --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+            if [[ "$stack_status" == "ROLLBACK_FAILED" || "$stack_status" == "ROLLBACK_COMPLETE" ]]; then
+              echo "Stack is in $stack_status state. Attempting to delete..."
+              aws cloudformation delete-stack --stack-name $(s3StackName) --region $(awsRegion)
+              aws cloudformation wait stack-delete-complete --stack-name $(s3StackName) --region $(awsRegion) || echo "Stack deletion may require manual cleanup"
+            else
+              echo "Stack status: $stack_status"
+            fi
+      - task: AWSShellScript@1
+        displayName: 'Validate S3 CloudFormation Template'
+        inputs:
+          awsCredentials: '$(awsServiceConnection)'
+          regionName: '$(awsRegion)'
+          scriptType: 'inline'
+          inlineScript: |
+            aws cloudformation validate-template --template-body file://$(s3TemplatePath)
+      - task: AWSShellScript@1
+        displayName: 'Deploy S3 CloudFormation Stack'
+        inputs:
+          awsCredentials: '$(awsServiceConnection)'
+          regionName: '$(awsRegion)'
+          scriptType: 'inline'
+          inlineScript: |
+            echo "Deploying S3 stack: $(s3StackName) with bucket name: $(bucketName)"
+            aws cloudformation deploy \
+              --template-file $(s3TemplatePath) \
+              --stack-name $(s3StackName) \
+              --parameter-overrides BucketName=$(bucketName) \
+              --no-fail-on-empty-changeset || \
+            { echo "Deployment failed. Fetching stack events..."; \
+              aws cloudformation describe-stack-events --stack-name $(s3StackName) --region $(awsRegion); \
+              exit 1; }
+  - job: ValidateAndDeployEC2
+    displayName: 'Validate and Deploy EC2 Instance'
+    dependsOn: DeployS3Bucket
+    condition: succeeded()
+    steps:
+      - checkout: self
+        displayName: 'Checkout GitHub Repository'
+      - task: AWSShellScript@1
+        displayName: 'Check and Delete Stuck EC2 Stack'
+        inputs:
+          awsCredentials: '$(awsServiceConnection)'
+          regionName: '$(awsRegion)'
+          scriptType: 'inline'
+          inlineScript: |
+            echo "Checking stack status: $(ec2StackName)"
+            stack_status=$(aws cloudformation describe-stacks --stack-name $(ec2StackName) --region $(awsRegion) --query 'Stacks[0].StackStatus' --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+            if [[ "$stack_status" == "ROLLBACK_FAILED" || "$stack_status" == "ROLLBACK_COMPLETE" ]]; then
+              echo "Stack is in $stack_status state. Attempting to delete..."
+              aws cloudformation delete-stack --stack-name $(ec2StackName) --region $(awsRegion)
+              aws cloudformation wait stack-delete-complete --stack-name $(ec2StackName) --region $(awsRegion) || echo "Stack deletion may require manual cleanup"
+            else
+              echo "Stack status: $stack_status"
+            fi
       - task: AWSShellScript@1
         displayName: 'Validate EC2 CloudFormation Template'
         inputs:
@@ -37,15 +102,15 @@ jobs:
           regionName: '$(awsRegion)'
           scriptType: 'inline'
           inlineScript: |
-            echo "Deploying stack: $(stackName) with bucket name: $(bucketName)"
+            echo "Deploying EC2 stack: $(ec2StackName) with bucket name: $(bucketName)"
             aws cloudformation deploy \
               --template-file $(ec2TemplatePath) \
-              --stack-name $(stackName) \
+              --stack-name $(ec2StackName) \
               --parameter-overrides BucketName=$(bucketName) KeyName=$(keyName) \
               --capabilities CAPABILITY_IAM \
               --no-fail-on-empty-changeset || \
             { echo "Deployment failed. Fetching stack events..."; \
-              aws cloudformation describe-stack-events --stack-name $(stackName) --region $(awsRegion); \
+              aws cloudformation describe-stack-events --stack-name $(ec2StackName) --region $(awsRegion); \
               exit 1; }
   - job: CompileAndUploadToS3
     displayName: 'Compile Java Servlet and Upload Files to S3'
