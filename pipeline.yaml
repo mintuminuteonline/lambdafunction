@@ -129,14 +129,18 @@ jobs:
         inputs:
           targetType: 'inline'
           script: |
+            mkdir -p $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes
             mkdir -p $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example
             wget https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/4.0.1/javax.servlet-api-4.0.1.jar -O $(System.DefaultWorkingDirectory)/servlet-api.jar
+            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/LoginServlet.java
+            if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/LoginServlet.class" ]; then
             echo "Listing source files:"
             ls -R $(System.DefaultWorkingDirectory)/src
-            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example $(System.DefaultWorkingDirectory)/src/LoginServlet.java 2> /tmp/javac.log || { echo "Compilation error details:"; cat /tmp/javac.log; exit 1; }
+            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/main/java/com/example/LoginServlet.java 2> /tmp/javac.log || { echo "Compilation error details:"; cat /tmp/javac.log; exit 1; }
             if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example/LoginServlet.class" ]; then
               echo "Compilation successful: LoginServlet.class created"
             else
+              echo "Error: Compilation failed"
               echo "Error: Compilation failed - LoginServlet.class not found"
               exit 1
             fi
@@ -154,6 +158,7 @@ jobs:
             echo "Uploading files to S3 bucket: $(bucketName)"
             echo "Listing files in WebContent:"
             ls -R $(System.DefaultWorkingDirectory)/WebContent
+            for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/WEB-INF/web.xml WebContent/WEB-INF/classes/LoginServlet.class; do
             for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/study.jsp WebContent/WEB-INF/web.xml WebContent/WEB-INF/classes/com/example/LoginServlet.class; do
               if [ -f "$(System.DefaultWorkingDirectory)/$file" ]; then
                 echo "Uploading $file"
@@ -162,4 +167,5 @@ jobs:
                 echo "Error: File $file not found"
                 exit 1
               fi
+            done
             done
