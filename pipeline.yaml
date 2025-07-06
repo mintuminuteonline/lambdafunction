@@ -14,7 +14,7 @@ variables:
   ec2TemplatePath: '$(System.DefaultWorkingDirectory)/ec2-tomcat.yaml'
   bucketName: 'mintuminuteonline-bucket-20250705'
   stackName: 'LoginAppEC2Stack'
-  keyName: 'my-key-pair'
+  keyName: 'cfn-keypair'
 
 jobs:
   - job: ValidateAndDeployEC2
