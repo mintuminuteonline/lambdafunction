@@ -1,4 +1,4 @@
-# Azure DevOps pipeline to validate, deploy S3 bucket template, and upload Java login page files to S3
+# Azure DevOps pipeline to validate and deploy EC2 instance and compile/upload Java web app files to S3
 trigger:
   branches:
     include:
@@ -11,26 +11,27 @@ pool:
 variables:
   awsServiceConnection: 'aws-oidc-federation' # AWS service connection name
   awsRegion: 'us-east-1' # AWS region
-  templatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml' # Path to S3 template
-  bucketName: 'mintuminuteonline-bucket-20250705' # Unique S3 bucket name
-  stackName: 'MyS3Stack' # CloudFormation stack name
+  ec2TemplatePath: '$(System.DefaultWorkingDirectory)/ec2-tomcat.yaml' # Path to EC2 CFT
+  bucketName: 'mintuminuteonline-bucket-20250705' # S3 bucket name
+  stackName: 'LoginAppEC2Stack' # CloudFormation stack name
+  keyName: 'my-key-pair' # EC2 key pair name
 
 jobs:
-  - job: ValidateDeployAndUpload
-    displayName: 'Validate, Deploy S3 Bucket, and Upload Files'
+  - job: ValidateAndDeployEC2
+    displayName: 'Validate and Deploy EC2 Instance'
     steps:
       - checkout: self
         displayName: 'Checkout GitHub Repository'
       - task: AWSShellScript@1
-        displayName: 'Validate CloudFormation Template'
+        displayName: 'Validate EC2 CloudFormation Template'
         inputs:
           awsCredentials: '$(awsServiceConnection)'
           regionName: '$(awsRegion)'
           scriptType: 'inline'
           inlineScript: |
-            aws cloudformation validate-template --template-body file://$(templatePath)
+            aws cloudformation validate-template --template-body file://$(ec2TemplatePath)
       - task: AWSShellScript@1
-        displayName: 'Deploy CloudFormation Stack'
+        displayName: 'Deploy EC2 CloudFormation Stack'
         inputs:
           awsCredentials: '$(awsServiceConnection)'
           regionName: '$(awsRegion)'
@@ -38,11 +39,43 @@ jobs:
           inlineScript: |
             echo "Deploying stack: $(stackName) with bucket name: $(bucketName)"
             aws cloudformation deploy \
-              --template-file $(templatePath) \
+              --template-file $(ec2TemplatePath) \
               --stack-name $(stackName) \
-              --parameter-overrides BucketName=$(bucketName)
+              --parameter-overrides BucketName=$(bucketName) KeyName=$(keyName) \
+              --capabilities CAPABILITY_IAM
+  - job: CompileAndUploadToS3
+    displayName: 'Compile Java Servlet and Upload Files to S3'
+    dependsOn: ValidateAndDeployEC2
+    condition: succeeded() # Run only if EC2 deployment succeeds
+    steps:
+      - checkout: self
+        displayName: 'Checkout GitHub Repository'
+      - task: JavaToolInstaller@0
+        displayName: 'Install Java 11'
+        inputs:
+          version: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
+      - task: Bash@3
+        displayName: 'Download Servlet API and Compile LoginServlet.java'
+        inputs:
+          targetType: 'inline'
+          script: |
+            # Create classes directory
+            mkdir -p $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes
+            # Download Servlet API JAR
+            wget https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/4.0.1/javax.servlet-api-4.0.1.jar -O $(System.DefaultWorkingDirectory)/servlet-api.jar
+            # Compile LoginServlet.java
+            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/LoginServlet.java
+            # Verify compilation
+            if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/LoginServlet.class" ]; then
+              echo "Compilation successful: LoginServlet.class created"
+            else
+              echo "Error: Compilation failed"
+              exit 1
+            fi
       - task: AWSShellScript@1
-        displayName: 'Upload Login Page Files to S3'
+        displayName: 'Upload Files to S3'
         inputs:
           awsCredentials: '$(awsServiceConnection)'
           regionName: '$(awsRegion)'
@@ -58,7 +91,7 @@ jobs:
             echo "Listing files in WebContent:"
             ls -R $(System.DefaultWorkingDirectory)/WebContent
             # Upload files with existence check
-            for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/WEB-INF/web.xml; do
+            for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/WEB-INF/web.xml WebContent/WEB-INF/classes/LoginServlet.class; do
               if [ -f "$(System.DefaultWorkingDirectory)/$file" ]; then
                 echo "Uploading $file"
                 aws s3 cp $(System.DefaultWorkingDirectory)/$file s3://$(bucketName)/$file

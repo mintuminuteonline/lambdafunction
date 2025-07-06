@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create an EC2 instance with Tomcat to host a Java web application.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Name of the existing S3 bucket containing the web application files.
+    Default: mintuminuteonline-bucket-20250705
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 KeyPair for SSH access.
+    Default: cfn-keypair
+
+Resources:
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: EC2S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:aws:s3:::${BucketName}/*
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+  WebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-0e86e20dae9224db8 # Amazon Linux 2023 AMI in us-east-1
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref WebServerSecurityGroup
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Update system
+          yum update -y
+          # Install Java 11
+          yum install -y java-11-amazon-corretto
+          # Install Tomcat 9
+          wget https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.95/bin/apache-tomcat-9.0.95.tar.gz
+          tar -xvzf apache-tomcat-9.0.95.tar.gz -C /opt
+          mv /opt/apache-tomcat-9.0.95 /opt/tomcat
+          # Start Tomcat
+          /opt/tomcat/bin/startup.sh
+          # Create webapp directory
+          mkdir -p /opt/tomcat/webapps/loginapp/WEB-INF/classes
+          # Copy files from S3
+          aws s3 cp s3://${BucketName}/login.jsp /opt/tomcat/webapps/loginapp/login.jsp
+          aws s3 cp s3://${BucketName}/welcome.jsp /opt/tomcat/webapps/loginapp/welcome.jsp
+          aws s3 cp s3://${BucketName}/WEB-INF/web.xml /opt/tomcat/webapps/loginapp/WEB-INF/web.xml
+          aws s3 cp s3://${BucketName}/WEB-INF/classes/LoginServlet.class /opt/tomcat/webapps/loginapp/WEB-INF/classes/LoginServlet.class
+          # Set permissions
+          chmod -R 755 /opt/tomcat/webapps/loginapp
+      Tags:
+        - Key: Name
+          Value: LoginAppWebServer
+
+Outputs:
+  InstancePublicIP:
+    Description: Public IP of the EC2 instance
+    Value: !GetAtt WebServerInstance.PublicIp
+  WebsiteURL:
+    Description: URL to access the login page
+    Value: !Sub http://${WebServerInstance.PublicDnsName}:8080/loginapp/login.jsp
