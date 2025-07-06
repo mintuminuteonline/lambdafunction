@@ -2,19 +2,19 @@
 trigger:
   branches:
     include:
-      - main # Trigger pipeline on push to main branch
-pr: none # Disable PR triggers
+      - main
+pr: none
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  awsServiceConnection: 'aws-oidc-federation' # AWS service connection name
-  awsRegion: 'us-east-1' # AWS region
-  ec2TemplatePath: '$(System.DefaultWorkingDirectory)/ec2-tomcat.yaml' # Path to EC2 CFT
-  bucketName: 'mintuminuteonline-bucket-20250705' # S3 bucket name
-  stackName: 'LoginAppEC2Stack' # CloudFormation stack name
-  keyName: 'my-key-pair' # EC2 key pair name
+  awsServiceConnection: 'aws-oidc-federation'
+  awsRegion: 'us-east-1'
+  ec2TemplatePath: '$(System.DefaultWorkingDirectory)/ec2-tomcat.yaml'
+  bucketName: 'mintuminuteonline-bucket-20250705'
+  stackName: 'LoginAppEC2Stack'
+  keyName: 'my-key-pair'
 
 jobs:
   - job: ValidateAndDeployEC2
@@ -42,11 +42,15 @@ jobs:
               --template-file $(ec2TemplatePath) \
               --stack-name $(stackName) \
               --parameter-overrides BucketName=$(bucketName) KeyName=$(keyName) \
-              --capabilities CAPABILITY_IAM
+              --capabilities CAPABILITY_IAM \
+              --no-fail-on-empty-changeset || \
+            { echo "Deployment failed. Fetching stack events..."; \
+              aws cloudformation describe-stack-events --stack-name $(stackName) --region $(awsRegion); \
+              exit 1; }
   - job: CompileAndUploadToS3
     displayName: 'Compile Java Servlet and Upload Files to S3'
     dependsOn: ValidateAndDeployEC2
-    condition: succeeded() # Run only if EC2 deployment succeeds
+    condition: succeeded()
     steps:
       - checkout: self
         displayName: 'Checkout GitHub Repository'
@@ -61,13 +65,9 @@ jobs:
         inputs:
           targetType: 'inline'
           script: |
-            # Create classes directory
             mkdir -p $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes
-            # Download Servlet API JAR
             wget https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/4.0.1/javax.servlet-api-4.0.1.jar -O $(System.DefaultWorkingDirectory)/servlet-api.jar
-            # Compile LoginServlet.java
             javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/LoginServlet.java
-            # Verify compilation
             if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/LoginServlet.class" ]; then
               echo "Compilation successful: LoginServlet.class created"
             else
@@ -81,16 +81,13 @@ jobs:
           regionName: '$(awsRegion)'
           scriptType: 'inline'
           inlineScript: |
-            # Verify bucketName variable
             if [ -z "$(bucketName)" ]; then
               echo "Error: bucketName variable is empty or unset"
               exit 1
             fi
             echo "Uploading files to S3 bucket: $(bucketName)"
-            # List files for debugging
             echo "Listing files in WebContent:"
             ls -R $(System.DefaultWorkingDirectory)/WebContent
-            # Upload files with existence check
             for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/WEB-INF/web.xml WebContent/WEB-INF/classes/LoginServlet.class; do
               if [ -f "$(System.DefaultWorkingDirectory)/$file" ]; then
                 echo "Uploading $file"
