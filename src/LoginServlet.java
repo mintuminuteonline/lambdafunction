@@ -1,5 +1,4 @@
-<xaiArtifact artifact_id="0b32e999-ac29-402e-9593-fb5ad6dd7d40" artifact_version_id="7abd1b47-6cfe-4d60-b542-5f12d5856ef9" title="LoginServlet.java" contentType="text/x-java">
-```java
+java
 import java.io.IOException;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -24,4 +23,3 @@ public class LoginServlet extends HttpServlet {
         }
     }
 }
-```
