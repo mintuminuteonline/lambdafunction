@@ -5,7 +5,7 @@ Parameters:
   BucketName:
     Type: String
     Description: Name of the S3 bucket
-    Default: mintuminuteonline-bucket-20250705
+    Default: mintuminuteonline-bucket-20250706
 
 Resources:
   S3Bucket:

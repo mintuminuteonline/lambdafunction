@@ -13,7 +13,7 @@ variables:
   awsRegion: 'us-east-1'
   s3TemplatePath: '$(System.DefaultWorkingDirectory)/s3-bucket.yaml'
   ec2TemplatePath: '$(System.DefaultWorkingDirectory)/ec2-tomcat.yaml'
-  bucketName: 'mintuminuteonline-bucket-20250705'
+  bucketName: 'mintuminuteonline-bucket-20250706'
   s3StackName: 'LoginAppS3Stack'
   ec2StackName: 'LoginAppEC2Stack'
   keyName: 'cfn-keypair'
