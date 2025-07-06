@@ -1,11 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template to create an S3 bucket and EC2 instance with Tomcat for the Login App
+Description: CloudFormation template to create an EC2 instance with Tomcat for the Login App
 
 Parameters:
   BucketName:
     Type: String
-    Description: Name of the S3 bucket for web application files
-    Default: mintuminuteonline-bucket-20250705
+    Description: Name of the existing S3 bucket for web application files
+    Default: mintuminuteonline-bucket-20250706
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
     Description: Name of an existing EC2 KeyPair for SSH access
@@ -20,12 +20,6 @@ Parameters:
     Default: ami-05ffe3c48a9991133
 
 Resources:
-  S3Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref BucketName
-      AccessControl: Private
-
   WebServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -121,6 +115,3 @@ Outputs:
   WebsiteURL:
     Description: URL to access the login page
     Value: !Sub http://${WebServerInstance.PublicDnsName}:8080/loginapp/login.jsp
-  BucketName:
-    Description: Name of the created S3 bucket
-    Value: !Ref S3Bucket
