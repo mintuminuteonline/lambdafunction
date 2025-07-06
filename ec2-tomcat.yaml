@@ -1,40 +1,31 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template to create an EC2 instance with Tomcat to host a Java web application.
+Description: CloudFormation template to create an S3 bucket and EC2 instance with Tomcat for the Login App
 
 Parameters:
   BucketName:
     Type: String
-    Description: Name of the existing S3 bucket containing the web application files.
+    Description: Name of the S3 bucket for web application files
     Default: mintuminuteonline-bucket-20250705
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
-    Description: Name of an existing EC2 KeyPair for SSH access.
+    Description: Name of an existing EC2 KeyPair for SSH access
     Default: cfn-keypair
+  InstanceType:
+    Type: String
+    Description: EC2 instance type
+    Default: t2.micro
+  ImageId:
+    Type: String
+    Description: AMI ID for Amazon Linux 2023 in us-east-1
+    Default: ami-05ffe3c48a9991133
 
 Resources:
-  EC2InstanceRole:
-    Type: AWS::IAM::Role
+  S3Bucket:
+    Type: AWS::S3::Bucket
     Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: ec2.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: EC2S3AccessPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: s3:GetObject
-                Resource: !Sub arn:aws:s3:::${BucketName}/*
-  EC2InstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      Roles:
-        - !Ref EC2InstanceRole
+      BucketName: !Ref BucketName
+      AccessControl: Private
+
   WebServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -48,37 +39,77 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp: 0.0.0.0/0
+
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub arn:aws:s3:::${BucketName}/*
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
   WebServerInstance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t2.micro
-      ImageId: ami-05ffe3c48a9991133 # Amazon Linux 2023 AMI in us-east-1
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref ImageId
       KeyName: !Ref KeyName
       SecurityGroups:
         - !Ref WebServerSecurityGroup
       IamInstanceProfile: !Ref EC2InstanceProfile
       UserData:
         Fn::Base64: !Sub |
-          #!/bin/bash
-          # Update system
+          #!/bin/bash -xe
+          exec > /var/log/user-data.log 2>&1
           yum update -y
-          # Install Java 11
           yum install -y java-11-amazon-corretto
-          # Install Tomcat 9
-          wget https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.95/bin/apache-tomcat-9.0.95.tar.gz
-          tar -xvzf apache-tomcat-9.0.95.tar.gz -C /opt
+          curl -O https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.95/bin/apache-tomcat-9.0.95.tar.gz
+          tar -xzf apache-tomcat-9.0.95.tar.gz -C /opt
           mv /opt/apache-tomcat-9.0.95 /opt/tomcat
-          # Start Tomcat
-          /opt/tomcat/bin/startup.sh
-          # Create webapp directory
+          chown -R ec2-user:ec2-user /opt/tomcat
+          chmod +x /opt/tomcat/bin/*.sh
           mkdir -p /opt/tomcat/webapps/loginapp/WEB-INF/classes
-          # Copy files from S3
-          aws s3 cp s3://${BucketName}/login.jsp /opt/tomcat/webapps/loginapp/login.jsp
-          aws s3 cp s3://${BucketName}/welcome.jsp /opt/tomcat/webapps/loginapp/welcome.jsp
-          aws s3 cp s3://${BucketName}/WEB-INF/web.xml /opt/tomcat/webapps/loginapp/WEB-INF/web.xml
-          aws s3 cp s3://${BucketName}/WEB-INF/classes/LoginServlet.class /opt/tomcat/webapps/loginapp/WEB-INF/classes/LoginServlet.class
-          # Set permissions
-          chmod -R 755 /opt/tomcat/webapps/loginapp
+          aws s3 cp s3://${BucketName}/WebContent/ /opt/tomcat/webapps/loginapp/ --recursive
+          cat <<EOF > /etc/systemd/system/tomcat.service
+          [Unit]
+          Description=Apache Tomcat Web Application Container
+          After=network.target
+          [Service]
+          Type=forking
+          Environment="JAVA_HOME=/usr/lib/jvm/java-11-amazon-corretto"
+          Environment="CATALINA_PID=/opt/tomcat/temp/tomcat.pid"
+          Environment="CATALINA_HOME=/opt/tomcat"
+          Environment="CATALINA_BASE=/opt/tomcat"
+          ExecStart=/opt/tomcat/bin/startup.sh
+          ExecStop=/opt/tomcat/bin/shutdown.sh
+          User=ec2-user
+          Group=ec2-user
+          Restart=always
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+          systemctl daemon-reload
+          systemctl enable tomcat
+          systemctl start tomcat
+          echo "Tomcat setup complete" >> /var/log/user-data.log
       Tags:
         - Key: Name
           Value: LoginAppWebServer
@@ -90,3 +121,6 @@ Outputs:
   WebsiteURL:
     Description: URL to access the login page
     Value: !Sub http://${WebServerInstance.PublicDnsName}:8080/loginapp/login.jsp
+  BucketName:
+    Description: Name of the created S3 bucket
+    Value: !Ref S3Bucket
