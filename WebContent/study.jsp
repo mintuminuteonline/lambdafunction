@@ -3,7 +3,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Welcome</title>
+    <title>Study Session</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -18,6 +18,12 @@
         h1 {
             color: #333;
         }
+        p {
+            max-width: 600px;
+            text-align: center;
+            line-height: 1.6;
+            color: #555;
+        }
         a {
             color: #4CAF50;
             text-decoration: none;
@@ -30,7 +36,11 @@
     </style>
 </head>
 <body>
-    <h1>Welcome, <%= session.getAttribute("username") %>!</h1>
-    <a href="study.jsp">Click here for session from Mintu</a>
+    <h1>Session from Mintu: Study Resources</h1>
+    <p>
+        Welcome to your study session! Here, you can explore resources and materials to enhance your learning experience.
+        Topics include Java programming, web development, and more. Stay tuned for updates and additional content!
+    </p>
+    <a href="welcome.jsp">Back to Welcome Page</a>
 </body>
 </html>
