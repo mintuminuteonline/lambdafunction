@@ -1,5 +1,3 @@
-<xaiArtifact artifact_id="785b37f8-0ffd-4cab-9f0c-d7f712ceac16" artifact_version_id="c8c0b3d2-7f5b-4b13-939f-b68419b0d853" title="login.jsp" contentType="text/html">
-```html
 <!DOCTYPE html>
 <html>
 <head>
@@ -63,4 +61,3 @@
     </div>
 </body>
 </html>
-```

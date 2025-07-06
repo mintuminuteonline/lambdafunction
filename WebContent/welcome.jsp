@@ -1,5 +1,3 @@
-<xaiArtifact artifact_id="9cf69a6b-661a-448e-891e-93af0931ddf6" artifact_version_id="80dfb6e0-c738-45f9-9bfe-f6a13eecb1f2" title="welcome.jsp" contentType="text/html">
-```html
 <!DOCTYPE html>
 <html>
 <head>
@@ -31,4 +29,3 @@
     </div>
 </body>
 </html>
-```

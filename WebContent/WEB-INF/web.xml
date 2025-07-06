@@ -1,5 +1,3 @@
-<xaiArtifact artifact_id="245770a6-8914-4cc3-94b5-3b569643ffa4" artifact_version_id="c6a2db57-9cce-4ecc-9885-69c3cfe6ba57" title="web.xml" contentType="text/xml">
-```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -10,4 +8,3 @@
         <welcome-file>login.jsp</welcome-file>
     </welcome-file-list>
 </web-app>
-```
