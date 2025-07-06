@@ -1,4 +1,3 @@
-# Azure DevOps pipeline to validate and deploy S3 bucket, EC2 instance, and compile/upload Java web app files to S3
 trigger:
   branches:
     include:
@@ -130,13 +129,15 @@ jobs:
         inputs:
           targetType: 'inline'
           script: |
-            mkdir -p $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes
+            mkdir -p $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example
             wget https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/4.0.1/javax.servlet-api-4.0.1.jar -O $(System.DefaultWorkingDirectory)/servlet-api.jar
-            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/LoginServlet.java
-            if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/LoginServlet.class" ]; then
+            echo "Listing source files:"
+            ls -R $(System.DefaultWorkingDirectory)/src
+            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/main/java/com/example/LoginServlet.java 2> /tmp/javac.log || { echo "Compilation error details:"; cat /tmp/javac.log; exit 1; }
+            if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example/LoginServlet.class" ]; then
               echo "Compilation successful: LoginServlet.class created"
             else
-              echo "Error: Compilation failed"
+              echo "Error: Compilation failed - LoginServlet.class not found"
               exit 1
             fi
       - task: AWSShellScript@1
@@ -153,7 +154,7 @@ jobs:
             echo "Uploading files to S3 bucket: $(bucketName)"
             echo "Listing files in WebContent:"
             ls -R $(System.DefaultWorkingDirectory)/WebContent
-            for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/WEB-INF/web.xml WebContent/WEB-INF/classes/LoginServlet.class; do
+            for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/study.jsp WebContent/WEB-INF/web.xml WebContent/WEB-INF/classes/com/example/LoginServlet.class; do
               if [ -f "$(System.DefaultWorkingDirectory)/$file" ]; then
                 echo "Uploading $file"
                 aws s3 cp $(System.DefaultWorkingDirectory)/$file s3://$(bucketName)/$file
@@ -162,3 +163,12 @@ jobs:
                 exit 1
               fi
             done
+      - task: SSH@0
+        displayName: 'Sync S3 Files to EC2 Instance and Restart Tomcat'
+        inputs:
+          sshEndpoint: 'EC2SSHConnection' # Replace with your SSH service connection name
+          runOptions: 'inline'
+          inline: |
+            aws s3 cp s3://$(bucketName)/WebContent/ /opt/tomcat/webapps/loginapp/ --recursive
+            sudo systemctl restart tomcat
+        condition: succeeded()
