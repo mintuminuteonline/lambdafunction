@@ -16,7 +16,7 @@ variables:
   bucketName: 'mintuminuteonline-bucket-20250705'
   s3StackName: 'LoginAppS3Stack'
   ec2StackName: 'LoginAppEC2Stack'
-  keyName: 'my-key-pair'
+  keyName: 'cfn-keypair'
 
 jobs:
   - job: DeployS3Bucket
