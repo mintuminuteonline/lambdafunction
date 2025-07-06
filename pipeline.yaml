@@ -118,6 +118,7 @@ jobs:
     steps:
       - checkout: self
         displayName: 'Checkout GitHub Repository'
+        fetchDepth: 0
       - task: JavaToolInstaller@0
         displayName: 'Install Java 11'
         inputs:
