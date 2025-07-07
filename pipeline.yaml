@@ -118,6 +118,7 @@ jobs:
     steps:
       - checkout: self
         displayName: 'Checkout GitHub Repository'
+        fetchDepth: 0
       - task: JavaToolInstaller@0
         displayName: 'Install Java 11'
         inputs:
@@ -133,7 +134,16 @@ jobs:
             wget https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/4.0.1/javax.servlet-api-4.0.1.jar -O $(System.DefaultWorkingDirectory)/servlet-api.jar
             echo "Listing source files:"
             ls -R $(System.DefaultWorkingDirectory)/src
-            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/main/java/com/example/LoginServlet.java 2> /tmp/javac.log || { echo "Compilation error details:"; cat /tmp/javac.log; exit 1; }
+            if [ ! -f "$(System.DefaultWorkingDirectory)/src/LoginServlet.java" ]; then
+              echo "Error: LoginServlet.java not found in src/"
+              exit 1
+            fi
+            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example $(System.DefaultWorkingDirectory)/src/LoginServlet.java 2> /tmp/javac.log
+            if [ $? -ne 0 ]; then
+              echo "Compilation error details:"
+              cat /tmp/javac.log
+              exit 1
+            fi
             if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example/LoginServlet.class" ]; then
               echo "Compilation successful: LoginServlet.class created"
             else
@@ -151,18 +161,25 @@ jobs:
               echo "Error: bucketName variable is empty or unset"
               exit 1
             fi
-            echo "Uploading files to S3 bucket: $(bucketName)"
-            echo "Listing files in WebContent:"
-            ls -R $(System.DefaultWorkingDirectory)/WebContent
-            for file in WebContent/login.jsp WebContent/welcome.jsp WebContent/study.jsp WebContent/WEB-INF/web.xml WebContent/WEB-INF/classes/com/example/LoginServlet.class; do
+            echo "Verifying files before upload:"
+            for file in src/main/webapp/login.jsp src/main/webapp/welcome.jsp src/main/webapp/study.jsp src/main/webapp/WEB-INF/web.xml WebContent/WEB-INF/classes/com/example/LoginServlet.class; do
               if [ -f "$(System.DefaultWorkingDirectory)/$file" ]; then
-                echo "Uploading $file"
-                aws s3 cp $(System.DefaultWorkingDirectory)/$file s3://$(bucketName)/$file
+                echo "Found: $file"
               else
                 echo "Error: File $file not found"
                 exit 1
               fi
             done
+            echo "Uploading files to S3 bucket: $(bucketName)"
+            ls -R $(System.DefaultWorkingDirectory)/src/main/webapp
+            ls -R $(System.DefaultWorkingDirectory)/WebContent
+            for file in src/main/webapp/login.jsp src/main/webapp/welcome.jsp src/main/webapp/study.jsp src/main/webapp/WEB-INF/web.xml WebContent/WEB-INF/classes/com/example/LoginServlet.class; do
+              target_file=$(echo $file | sed 's|src/main/webapp/||;s|WebContent/WEB-INF/classes/com/example/||')
+              echo "Uploading $file to s3://$(bucketName)/$target_file"
+              aws s3 cp $(System.DefaultWorkingDirectory)/$file s3://$(bucketName)/$target_file || { echo "Error: Failed to upload $file"; exit 1; }
+            done
+            echo "Verifying uploaded files in S3:"
+            aws s3 ls s3://$(bucketName)/ --recursive
       # - task: SSH@0
       #   displayName: 'Sync S3 Files to EC2 Instance and Restart Tomcat'
       #   inputs:
