@@ -163,12 +163,12 @@ jobs:
                 exit 1
               fi
             done
-      - task: SSH@0
-        displayName: 'Sync S3 Files to EC2 Instance and Restart Tomcat'
-        inputs:
-          sshEndpoint: 'EC2SSHConnection' # Replace with your SSH service connection name
-          runOptions: 'inline'
-          inline: |
-            aws s3 cp s3://$(bucketName)/WebContent/ /opt/tomcat/webapps/loginapp/ --recursive
-            sudo systemctl restart tomcat
-        condition: succeeded()
+      # - task: SSH@0
+      #   displayName: 'Sync S3 Files to EC2 Instance and Restart Tomcat'
+      #   inputs:
+      #     sshEndpoint: 'EC2SSHConnection' # Replace with your SSH service connection name
+      #     runOptions: 'inline'
+      #     inline: |
+      #       aws s3 cp s3://$(bucketName)/WebContent/ /opt/tomcat/webapps/loginapp/ --recursive
+      #       sudo systemctl restart tomcat
+      #   condition: succeeded()
