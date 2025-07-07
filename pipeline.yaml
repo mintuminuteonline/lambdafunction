@@ -118,7 +118,6 @@ jobs:
     steps:
       - checkout: self
         displayName: 'Checkout GitHub Repository'
-        fetchDepth: 0
       - task: JavaToolInstaller@0
         displayName: 'Install Java 11'
         inputs:
@@ -134,16 +133,7 @@ jobs:
             wget https://repo1.maven.org/maven2/javax/servlet/javax.servlet-api/4.0.1/javax.servlet-api-4.0.1.jar -O $(System.DefaultWorkingDirectory)/servlet-api.jar
             echo "Listing source files:"
             ls -R $(System.DefaultWorkingDirectory)/src
-            if [ ! -f "$(System.DefaultWorkingDirectory)/src/LoginServlet.java" ]; then
-              echo "Error: LoginServlet.java not found in src/"
-              exit 1
-            fi
-            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example $(System.DefaultWorkingDirectory)/src/LoginServlet.java 2> /tmp/javac.log
-            if [ $? -ne 0 ]; then
-              echo "Compilation error details:"
-              cat /tmp/javac.log
-              exit 1
-            fi
+            javac -cp $(System.DefaultWorkingDirectory)/servlet-api.jar -sourcepath $(System.DefaultWorkingDirectory)/src -d $(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes $(System.DefaultWorkingDirectory)/src/main/java/com/example/LoginServlet.java 2> /tmp/javac.log || { echo "Compilation error details:"; cat /tmp/javac.log; exit 1; }
             if [ -f "$(System.DefaultWorkingDirectory)/WebContent/WEB-INF/classes/com/example/LoginServlet.class" ]; then
               echo "Compilation successful: LoginServlet.class created"
             else
@@ -173,3 +163,12 @@ jobs:
                 exit 1
               fi
             done
+      - task: SSH@0
+        displayName: 'Sync S3 Files to EC2 Instance and Restart Tomcat'
+        inputs:
+          sshEndpoint: 'EC2SSHConnection' # Replace with your SSH service connection name
+          runOptions: 'inline'
+          inline: |
+            aws s3 cp s3://$(bucketName)/WebContent/ /opt/tomcat/webapps/loginapp/ --recursive
+            sudo systemctl restart tomcat
+        condition: succeeded()
